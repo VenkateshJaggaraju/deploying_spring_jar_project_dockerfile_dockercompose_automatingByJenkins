@@ -1,66 +1,122 @@
 pipeline {
     agent any
-    tools {
-        maven 'maven'
+
+    parameters {
+        choice(name: 'ACTION', choices: ['build', 'deploy', 'remove'], description: 'Choose action: build / deploy / remove')
     }
 
     environment {
-        IMAGE_NAME = 'spring-app'
-        CONTAINER_NAME = 'spring-app-container'
-        APP_PORT = '8083'
+        IMAGE_NAME = "yourdockerhubusername/myapp"
+        IMAGE_TAG = "latest"
+        DOCKER_CREDS = credentials('dockerhub-creds')
     }
 
     stages {
-        stage('Build JAR') {
-            steps {
-                sh 'mvn clean package -DskipTests'
-            }
-        }
 
-        stage('Build Docker Image') {
-            steps {
-                sh "docker build -t ${IMAGE_NAME} ."
+        stage('Build Docker Image & Push') {
+            when {
+                expression { params.ACTION == 'build' }
             }
-        }
-
-        stage('Run Docker Container If Not Running') {
             steps {
                 script {
-                    def isRunning = sh(script: "docker ps -q -f name=${CONTAINER_NAME}", returnStdout: true).trim()
+                    sh '''
+                    echo "Building Docker image..."
+                    docker build -t $IMAGE_NAME:$IMAGE_TAG .
 
-                    if (isRunning) {
-                        echo "🚫 Container '${CONTAINER_NAME}' is already running. Skipping run."
-                    } else {
-                        def exists = sh(script: "docker ps -a -q -f name=${CONTAINER_NAME}", returnStdout: true).trim()
-                        if (exists) {
-                            echo "🔁 Container exists but not running. Removing it..."
-                            sh "docker rm ${CONTAINER_NAME}"
-                        }
+                    echo "Tagging image..."
+                    docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:$IMAGE_TAG
 
-                        echo "🚀 Starting new Docker container..."
-                        sh "docker run -d --name ${CONTAINER_NAME} -p ${APP_PORT}:8080 ${IMAGE_NAME}"
-                    }
+                    echo "Logging into DockerHub..."
+                    echo $DOCKER_CREDS_PSW | docker login -u $DOCKER_CREDS_USR --password-stdin
+
+                    echo "Pushing image..."
+                    docker push $IMAGE_NAME:$IMAGE_TAG
+
+                    echo "Removing local image..."
+                    docker rmi $IMAGE_NAME:$IMAGE_TAG || true
+
+                    echo "Docker logout..."
+                    docker logout
+                    '''
+                }
+            }
+            post {
+                success {
+                    echo "✅ Build & Push stage completed successfully"
+                }
+                failure {
+                    echo "❌ Build & Push stage failed"
+                }
+                always {
+                    echo "Build stage finished"
                 }
             }
         }
 
-        stage('Show Container Status') {
+        stage('Deploy Application') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
             steps {
-                echo "📦 Current Docker containers:"
-                sh "docker ps -a --filter name=${CONTAINER_NAME}"
+                script {
+                    sh '''
+                    echo "Deploying application using docker-compose..."
+                    docker-compose down || true
+                    docker-compose up -d --build
+                    '''
+                }
+            }
+            post {
+                success {
+                    echo "✅ Deployment successful"
+                }
+                failure {
+                    echo "❌ Deployment failed"
+                }
+                always {
+                    echo "Deploy stage finished"
+                }
+            }
+        }
+
+        stage('Remove Application') {
+            when {
+                expression { params.ACTION == 'remove' }
+            }
+            steps {
+                script {
+                    sh '''
+                    echo "Stopping and removing containers..."
+                    docker-compose down
+
+                    echo "Removing unused images..."
+                    docker image prune -f
+                    '''
+                }
+            }
+            post {
+                success {
+                    echo "✅ Remove stage completed"
+                }
+                failure {
+                    echo "❌ Remove stage failed"
+                }
+                always {
+                    echo "Remove stage finished"
+                }
             }
         }
     }
 
     post {
+        always {
+            echo "Pipeline execution finished"
+        }
         success {
-            echo "✅ Spring Boot container is handled successfully."
+            echo "🎉 Pipeline succeeded"
         }
         failure {
-            echo "❌ Something went wrong with the deployment."
-        }
-        always {
-            echo "ℹ️ Pipeline finished. Check logs above for final status."
+            echo "⚠️ Pipeline failed"
         }
     }
 }
