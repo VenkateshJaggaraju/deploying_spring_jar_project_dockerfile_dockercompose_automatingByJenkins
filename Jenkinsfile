@@ -10,7 +10,7 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME = "your_dockerhub_username/your_image_name:latest"
+        IMAGE_NAME = "venkateshjaggaraju/deployingjenkins:latest"
         DOCKER_CREDENTIALS_ID = "dockerhub-creds-id"
     }
 
@@ -37,7 +37,7 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
-                      echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
                     '''
                 }
             }
@@ -85,8 +85,8 @@ pipeline {
             when { expression { params.ACTION == 'deploy' } }
             steps {
                 sh '''
-                  docker-compose down || true
-                  docker-compose up -d --build
+                    docker-compose down || true
+                    docker-compose up -d --build
                 '''
             }
             post {
@@ -100,8 +100,8 @@ pipeline {
             when { expression { params.ACTION == 'remove' } }
             steps {
                 sh '''
-                  docker-compose down
-                  docker system prune -f
+                    docker-compose down
+                    docker system prune -f
                 '''
             }
             post {
