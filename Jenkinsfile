@@ -5,26 +5,31 @@ pipeline {
         choice(
             name: 'ACTION',
             choices: ['build', 'deploy', 'remove'],
-            description: 'Select build, deploy, or remove'
+            description: 'Choose action: build, deploy or remove'
         )
     }
 
     environment {
-        IMAGE_NAME = "venkateshjaggaraju/deployingjenkins:latest"
-        DOCKER_CREDENTIALS_ID = "dockerhub-creds-id"
+        DOCKERHUB_USER = "venkateshjaggaraju"     // must be lowercase
+        IMAGE_NAME = "bunny"
+        FULL_IMAGE = "${DOCKERHUB_USER}/${IMAGE_NAME}:latest"
+        DOCKER_CREDENTIALS_ID = "deploying_spring_jar_project_dockerfile_dockercompose_automatingByJenkins"
     }
 
     stages {
 
-        // ================= BUILD FLOW =================
+        // ================= BUILD =================
         stage('Build Docker Image') {
             when { expression { params.ACTION == 'build' } }
             steps {
-                sh 'docker build -t $IMAGE_NAME .'
+                sh '''
+                  echo "Building Docker image..."
+                  docker build -t ${FULL_IMAGE} .
+                '''
             }
             post {
-                success { echo "✅ Docker image built successfully" }
-                failure { echo "❌ Docker image build failed" }
+                success { echo "✅ Docker image built" }
+                failure { echo "❌ Docker build failed" }
             }
         }
 
@@ -37,7 +42,7 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                      echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
                     '''
                 }
             }
@@ -50,7 +55,9 @@ pipeline {
         stage('Docker Push') {
             when { expression { params.ACTION == 'build' } }
             steps {
-                sh 'docker push $IMAGE_NAME'
+                sh '''
+                  docker push ${FULL_IMAGE}
+                '''
             }
             post {
                 success { echo "✅ Image pushed to DockerHub" }
@@ -61,7 +68,9 @@ pipeline {
         stage('Remove Local Image') {
             when { expression { params.ACTION == 'build' } }
             steps {
-                sh 'docker rmi $IMAGE_NAME || true'
+                sh '''
+                  docker rmi ${FULL_IMAGE} || true
+                '''
             }
             post {
                 success { echo "🧹 Local image removed" }
@@ -75,38 +84,38 @@ pipeline {
                 sh 'docker logout'
             }
             post {
-                success { echo "🔓 Docker logout successful" }
+                success { echo "🔓 Docker logout done" }
                 failure { echo "⚠️ Docker logout failed" }
             }
         }
 
-        // ================= DEPLOY FLOW =================
+        // ================= DEPLOY =================
         stage('Deploy using Docker Compose') {
             when { expression { params.ACTION == 'deploy' } }
             steps {
                 sh '''
-                    docker-compose down || true
-                    docker-compose up -d --build
+                  docker-compose down || true
+                  docker-compose up -d --build
                 '''
             }
             post {
-                success { echo "🚀 Application deployed successfully" }
+                success { echo "🚀 Application deployed" }
                 failure { echo "❌ Deployment failed" }
             }
         }
 
-        // ================= REMOVE FLOW =================
+        // ================= REMOVE =================
         stage('Remove Application') {
             when { expression { params.ACTION == 'remove' } }
             steps {
                 sh '''
-                    docker-compose down
-                    docker system prune -f
+                  docker-compose down || true
+                  docker system prune -af
                 '''
             }
             post {
-                success { echo "🗑️ Application removed successfully" }
-                failure { echo "❌ Remove operation failed" }
+                success { echo "🗑️ Application removed" }
+                failure { echo "❌ Remove failed" }
             }
         }
     }
