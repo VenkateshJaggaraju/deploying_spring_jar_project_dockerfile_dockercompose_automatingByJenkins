@@ -5,51 +5,41 @@ pipeline {
         choice(
             name: 'ACTION',
             choices: ['build', 'deploy', 'remove'],
-            description: 'Choose action: build, deploy, or remove'
+            description: 'Select build, deploy, or remove'
         )
     }
 
     environment {
         IMAGE_NAME = "your_dockerhub_username/your_image_name:latest"
-        DOCKER_CREDS = credentials('dockerhub-creds-id')
+        DOCKER_CREDENTIALS_ID = "dockerhub-creds-id"
     }
 
     stages {
 
+        // ================= BUILD FLOW =================
         stage('Build Docker Image') {
-            when {
-                expression { params.ACTION == 'build' }
-            }
+            when { expression { params.ACTION == 'build' } }
             steps {
-                sh "docker build -t ${IMAGE_NAME} ."
+                sh 'docker build -t $IMAGE_NAME .'
             }
             post {
-                success { echo "✅ Image build successful" }
-                failure { echo "❌ Image build failed" }
-            }
-        }
-
-        stage('Docker Tag') {
-            when {
-                expression { params.ACTION == 'build' }
-            }
-            steps {
-                sh "docker tag ${IMAGE_NAME} ${IMAGE_NAME}"
-            }
-            post {
-                success { echo "✅ Image tagged successfully" }
-                failure { echo "❌ Image tagging failed" }
+                success { echo "✅ Docker image built successfully" }
+                failure { echo "❌ Docker image build failed" }
             }
         }
 
         stage('Docker Login') {
-            when {
-                expression { params.ACTION == 'build' }
-            }
+            when { expression { params.ACTION == 'build' } }
             steps {
-                sh '''
-                echo $DOCKER_CREDS_PSW | docker login -u $DOCKER_CREDS_USR --password-stdin
-                '''
+                withCredentials([usernamePassword(
+                    credentialsId: "${DOCKER_CREDENTIALS_ID}",
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                      echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    '''
+                }
             }
             post {
                 success { echo "✅ Docker login successful" }
@@ -58,11 +48,9 @@ pipeline {
         }
 
         stage('Docker Push') {
-            when {
-                expression { params.ACTION == 'build' }
-            }
+            when { expression { params.ACTION == 'build' } }
             steps {
-                sh "docker push ${IMAGE_NAME}"
+                sh 'docker push $IMAGE_NAME'
             }
             post {
                 success { echo "✅ Image pushed to DockerHub" }
@@ -71,11 +59,9 @@ pipeline {
         }
 
         stage('Remove Local Image') {
-            when {
-                expression { params.ACTION == 'build' }
-            }
+            when { expression { params.ACTION == 'build' } }
             steps {
-                sh "docker rmi ${IMAGE_NAME} || true"
+                sh 'docker rmi $IMAGE_NAME || true'
             }
             post {
                 success { echo "🧹 Local image removed" }
@@ -84,11 +70,9 @@ pipeline {
         }
 
         stage('Docker Logout') {
-            when {
-                expression { params.ACTION == 'build' }
-            }
+            when { expression { params.ACTION == 'build' } }
             steps {
-                sh "docker logout"
+                sh 'docker logout'
             }
             post {
                 success { echo "🔓 Docker logout successful" }
@@ -96,15 +80,13 @@ pipeline {
             }
         }
 
-
+        // ================= DEPLOY FLOW =================
         stage('Deploy using Docker Compose') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
+            when { expression { params.ACTION == 'deploy' } }
             steps {
                 sh '''
-                docker-compose down || true
-                docker-compose up -d --build
+                  docker-compose down || true
+                  docker-compose up -d --build
                 '''
             }
             post {
@@ -113,15 +95,13 @@ pipeline {
             }
         }
 
-
+        // ================= REMOVE FLOW =================
         stage('Remove Application') {
-            when {
-                expression { params.ACTION == 'remove' }
-            }
+            when { expression { params.ACTION == 'remove' } }
             steps {
                 sh '''
-                docker-compose down
-                docker system prune -f
+                  docker-compose down
+                  docker system prune -f
                 '''
             }
             post {
