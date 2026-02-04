@@ -5,31 +5,46 @@ pipeline {
         choice(
             name: 'ACTION',
             choices: ['build', 'deploy', 'remove'],
-            description: 'Choose action: build, deploy or remove'
+            description: 'Choose pipeline action'
+        )
+        string(
+            name: 'IMAGE_NAME',
+            defaultValue: 'spring_project2003',
+            description: 'Docker image name'
+        )
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: 'v1',
+            description: 'Docker image tag'
+        )
+        string(
+            name: 'DOCKERHUB_USERNAME',
+            defaultValue: 'karthikan123',
+            description: 'DockerHub username'
         )
     }
 
     environment {
-        DOCKERHUB_USER = "venkateshjaggaraju"     // must be lowercase
-        IMAGE_NAME = "bunny"
-        FULL_IMAGE = "${DOCKERHUB_USER}/${IMAGE_NAME}:latest"
-        DOCKER_CREDENTIALS_ID = "deploying_spring_jar_project_dockerfile_dockercompose_automatingByJenkins"
+        IMAGE = "${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}"
     }
 
     stages {
 
-        // ================= BUILD =================
+        /* ================= CHECKOUT ================= */
+        stage('Checkout Code') {
+            when { expression { params.ACTION == 'build' } }
+            steps {
+                git branch: 'master',
+                    url: 'https://github.com/Ankarthik0011/SpringBoot_Project_deploy_using_Jenkins_Automation.git',
+                    credentialsId: 'github-creds'
+            }
+        }
+
+        /* ================= BUILD ================= */
         stage('Build Docker Image') {
             when { expression { params.ACTION == 'build' } }
             steps {
-                sh '''
-                  echo "Building Docker image..."
-                  docker build -t ${FULL_IMAGE} .
-                '''
-            }
-            post {
-                success { echo "✅ Docker image built" }
-                failure { echo "❌ Docker build failed" }
+                sh 'docker build -t $IMAGE .'
             }
         }
 
@@ -37,98 +52,54 @@ pipeline {
             when { expression { params.ACTION == 'build' } }
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: "${DOCKER_CREDENTIALS_ID}",
+                    credentialsId: 'dockerhub-3153',
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
-                    sh '''
-                      echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                    '''
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
                 }
-            }
-            post {
-                success { echo "✅ Docker login successful" }
-                failure { echo "❌ Docker login failed" }
             }
         }
 
         stage('Docker Push') {
             when { expression { params.ACTION == 'build' } }
             steps {
-                sh '''
-                  docker push ${FULL_IMAGE}
-                '''
-            }
-            post {
-                success { echo "✅ Image pushed to DockerHub" }
-                failure { echo "❌ Docker push failed" }
+                sh 'docker push $IMAGE'
             }
         }
 
-        stage('Remove Local Image') {
+        stage('Delete Local Image') {
             when { expression { params.ACTION == 'build' } }
             steps {
-                sh '''
-                  docker rmi ${FULL_IMAGE} || true
-                '''
-            }
-            post {
-                success { echo "🧹 Local image removed" }
-                failure { echo "⚠️ Failed to remove local image" }
+                sh 'docker rmi $IMAGE || true'
             }
         }
 
-        stage('Docker Logout') {
-            when { expression { params.ACTION == 'build' } }
-            steps {
-                sh 'docker logout'
-            }
-            post {
-                success { echo "🔓 Docker logout done" }
-                failure { echo "⚠️ Docker logout failed" }
-            }
-        }
-
-        // ================= DEPLOY =================
-        stage('Deploy using Docker Compose') {
+        /* ================= DEPLOY ================= */
+        stage('Deploy') {
             when { expression { params.ACTION == 'deploy' } }
             steps {
                 sh '''
-                  docker-compose down || true
-                  docker-compose up -d --build
+                docker-compose down || true
+                docker-compose pull
+                docker-compose up -d
                 '''
-            }
-            post {
-                success { echo "🚀 Application deployed" }
-                failure { echo "❌ Deployment failed" }
             }
         }
 
-        // ================= REMOVE =================
-        stage('Remove Application') {
+        /* ================= REMOVE ================= */
+        stage('Remove') {
             when { expression { params.ACTION == 'remove' } }
             steps {
-                sh '''
-                  docker-compose down || true
-                  docker system prune -af
-                '''
-            }
-            post {
-                success { echo "🗑️ Application removed" }
-                failure { echo "❌ Remove failed" }
+                sh 'docker-compose down || true'
             }
         }
     }
 
     post {
         always {
-            echo "Pipeline finished with action: ${params.ACTION}"
-        }
-        success {
-            echo "🎉 Pipeline completed successfully"
-        }
-        failure {
-            echo "🔥 Pipeline failed"
+            sh 'docker logout || true'
+            echo "Pipeline execution completed successfully"
         }
     }
 }
