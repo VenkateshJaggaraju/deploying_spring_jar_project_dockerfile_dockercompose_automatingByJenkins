@@ -1,31 +1,33 @@
-# -------- Stage 1: Build with Maven --------
-FROM maven:3.9.6-eclipse-temurin-17 AS build
+# Build stage
+#FROM maven:3.9.5-eclipse-temurin-17-focal AS build
+#WORKDIR /app
+#COPY pom.xml .
+#COPY src ./src
+#RUN mvn clean package -DskipTests
+# Runtime stage
+#FROM eclipse-temurin:17-jdk-focal
+#WORKDIR /app
+#COPY --from=build /app/target/*.jar app.jar
+#ENV SERVER_PORT=8080
+#EXPOSE ${SERVER_PORT}
+#ENTRYPOINT ["java", "-jar", "app.jar"]
 
+# ---------- Build stage ----------
+FROM maven:3.9.5-eclipse-temurin-17 AS build
 WORKDIR /app
 
-# Copy pom.xml first (for dependency caching)
 COPY pom.xml .
-
-# Download dependencies
-RUN mvn dependency:go-offline
-
-# Copy source code
 COPY src ./src
 
-# Build jar
 RUN mvn clean package -DskipTests
 
-
-# -------- Stage 2: Run with Java --------
+# ---------- Runtime stage ----------
 FROM eclipse-temurin:17-jre
-
 WORKDIR /app
 
-# Copy jar from build stage
 COPY --from=build /app/target/*.jar app.jar
 
-# Expose port (optional, change as per your app)
+ENV SERVER_PORT=8080
 EXPOSE 8080
 
-# Run jar
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java","-jar","app.jar"]
